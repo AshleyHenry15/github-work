@@ -30,13 +30,35 @@ jobs:
         # Insert your command to fetch repositories here
         echo "Fetching repositories for rstudio and posit-dev organizations..."
 
-    # Gather contribution data and generate the report (replace this step with your actual script)
+    # Generate the report
     - name: Generate contribution report
       run: |
-        # Replace this command with your actual report generation logic
-        echo "Generating contribution report..."
-        # Save the report to the reports directory
-        echo "Report generated!" > reports/contribution_report_$(date +'%Y-%m-%d').md
+        # Fetch the list of repositories for all organizations (rstudio, posit-dev)
+        orgs=("rstudio" "posit-dev")
+        today=$(date +"%Y-%m-%d")
+        report_file="reports/contribution_report_${today}.md"
+
+        echo "# GitHub Contributions Report - ${today}" > $report_file
+        for org in "${orgs[@]}"; do
+          echo "## Organization: $org" >> $report_file
+          # Fetch the repositories for the organization
+          repos=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
+            "https://api.github.com/orgs/$org/repos?type=all&per_page=100" | jq -r '.[].full_name')
+          for repo in $repos; do
+            echo "### Repository: $repo" >> $report_file
+            # Fetch contributions for the repo (PRs, issues, reviews)
+            pr_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
+              "https://api.github.com/repos/$repo/pulls?state=all" | jq '. | length')
+            issue_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
+              "https://api.github.com/repos/$repo/issues?state=all" | jq '. | length')
+            review_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
+              "https://api.github.com/repos/$repo/pulls/reviews?state=all" | jq '. | length')
+
+            echo "  - Pull Requests: $pr_count" >> $report_file
+            echo "  - Issues: $issue_count" >> $report_file
+            echo "  - Reviews: $review_count" >> $report_file
+          done
+        done
 
     # Commit and push the report to the repository
     - name: Commit and push the report
