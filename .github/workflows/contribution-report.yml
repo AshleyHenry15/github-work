@@ -1,77 +1,107 @@
-name: Generate GitHub Contribution Report
+name: GitHub Contributions Report
 
 on:
   schedule:
-    - cron: "0 19 * * 5"  # Runs every Friday at 3 PM EST
-  workflow_dispatch:
+    - cron: "0 19 * * 5"  # Runs every Friday at 3 PM EST (7 PM UTC)
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
   generate-report:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fetch GitHub Contributions (Last 7 Days)
+      - name: Set Up Environment
         run: |
-          USERNAME="AshleyHenry15"
-          TOKEN="${{ secrets.WEEKLYCLASSIC }}"
-          DATE=$(TZ="America/New_York" date +"%Y-%m-%d")  
-          REPORT_FILE="reports/contributions-$DATE.md"
-          mkdir -p reports
-          REPORT="## 📝 Weekly Contribution Report ($DATE)\n\n"
+          echo "Setting up environment..."
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Set Variables
+        run: |
+          echo "Setting up variables..."
+          USERNAME="ashleyhenry15"
           ORGS=("rstudio" "posit-dev")
-          DATE_LIMIT=$(TZ="America/New_York" date -d "7 days ago" --utc +"%Y-%m-%dT%H:%M:%SZ")
-          # Global Counters
-          TOTAL_ISSUES=0
-          TOTAL_CLOSED_ISSUES=0
-          TOTAL_PRS=0
-          TOTAL_MERGED_PRS=0
-          TOTAL_REVIEWS=0
+          TOKEN="${{ secrets.WEEKLYCLASSIC }}"
+          DATE=$(TZ="America/New_York" date +"%Y-%m-%d")
+          REPORT_DIR="reports"
+          REPORT_FILE="$REPORT_DIR/contributions-$DATE.md"
+          
+          mkdir -p "$REPORT_DIR"
+          
+          echo "USERNAME=$USERNAME" >> $GITHUB_ENV
+          echo "DATE=$DATE" >> $GITHUB_ENV
+          echo "REPORT_FILE=$REPORT_FILE" >> $GITHUB_ENV
+          echo "REPORT_DIR=$REPORT_DIR" >> $GITHUB_ENV
+
+      - name: Debug - Check Date and Report Path
+        run: |
+          echo "Expected report filename: $REPORT_FILE"
+          ls -l "$REPORT_DIR"
+
+      - name: Fetch Contributions and Generate Report
+        run: |
+          echo "# GitHub Contributions Report - $DATE" > "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
+
           for ORG in "${ORGS[@]}"; do
+            echo "Fetching data for organization: $ORG"
+
+            # Fetch GitHub events
             EVENTS=$(curl -s -H "Authorization: token $TOKEN" "https://api.github.com/users/$USERNAME/events?per_page=100")
-            ACTIVE_REPOS=$(echo "$EVENTS" | jq -r --arg DATE "$DATE_LIMIT" '[.[] | select(.created_at > $DATE) | .repo.name] | unique | .[]')
+            
+            # Debugging: Show fetched events
+            echo "Raw GitHub events:"
+            echo "$EVENTS" | jq '.[].type' || echo "No events found."
+
+            # Extract repository names where contributions occurred
+            ACTIVE_REPOS=$(echo "$EVENTS" | jq -r '.[].repo.name' | sort | uniq)
+
             if [[ -z "$ACTIVE_REPOS" ]]; then
+              echo "No active repositories found for $ORG in the past 7 days." | tee -a "$REPORT_FILE"
               continue
             fi
-            
-            REPORT+="## 🔹 Organization: [$ORG](https://github.com/$ORG)\n\n"
+
+            echo "## Organization: $ORG" >> "$REPORT_FILE"
+            echo "" >> "$REPORT_FILE"
+
             for REPO in $ACTIVE_REPOS; do
-              if [[ "$REPO" != "$ORG/"* ]]; then
-                continue
-              fi
+              echo "### Repository: $REPO" >> "$REPORT_FILE"
               
-              # Count contributions per category for this repo
-              ISSUE_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | length')
-              CLOSED_ISSUE_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="closed" and .repo.name==$REPO and .created_at > $DATE)] | length')
-              PR_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | length')
-              MERGED_PR_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestEvent" and .payload.action=="closed" and .payload.pull_request.merged == true and .repo.name==$REPO and .created_at > $DATE)] | length')
-              REVIEW_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestReviewEvent" and .repo.name==$REPO and .created_at > $DATE)] | length')
-              # Update Global Totals
-              TOTAL_ISSUES=$((TOTAL_ISSUES + ISSUE_COUNT))
-              TOTAL_CLOSED_ISSUES=$((TOTAL_CLOSED_ISSUES + CLOSED_ISSUE_COUNT))
-              TOTAL_PRS=$((TOTAL_PRS + PR_COUNT))
-              TOTAL_MERGED_PRS=$((TOTAL_MERGED_PRS + MERGED_PR_COUNT))
-              TOTAL_REVIEWS=$((TOTAL_REVIEWS + REVIEW_COUNT))
-              REPORT+="### 📌 Repository: [$REPO](https://github.com/$REPO)\n\n"
-              REPORT+="**Summary:**\n"
-              REPORT+="- 🐞 Issues Opened: $ISSUE_COUNT\n"
-              REPORT+="- 🚪 Issues Closed: $CLOSED_ISSUE_COUNT\n"
-              REPORT+="- 🔀 PRs Opened: $PR_COUNT\n"
-              REPORT+="- 🔒 PRs Merged: $MERGED_PR_COUNT\n"
-              REPORT+="- 📝 PR Reviews: $REVIEW_COUNT\n\n"
-              # Fetch detailed lists
-              ISSUES=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.issue.title)](\(.payload.issue.html_url))") | join("\n")')
-              REPORT+="#### 🐞 Issues Opened ($TOTAL_ISSUES total):\n${ISSUES:-_No new issues_\n}\n\n"
-              CLOSED_ISSUES=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="closed" and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.issue.title)](\(.payload.issue.html_url))") | join("\n")')
-              REPORT+="#### 🚪 Issues Closed ($TOTAL_CLOSED_ISSUES total):\n${CLOSED_ISSUES:-_No closed issues_\n}\n\n"
-              PRS=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.pull_request.title)](\(.payload.pull_request.html_url))") | join("\n")')
-              REPORT+="#### 🔀 Pull Requests Opened ($TOTAL_PRS total):\n${PRS:-_No new PRs_\n}\n\n"
-              MERGED_PRS=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestEvent" and .payload.action=="closed" and .payload.pull_request.merged == true and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.pull_request.title)](\(.payload.pull_request.html_url))") | join("\n")')
-              REPORT+="#### 🔒 Merged Pull Requests ($TOTAL_MERGED_PRS total):\n${MERGED_PRS:-_No merged PRs_\n}\n\n"
-              REVIEWS=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestReviewEvent" and .repo.name==$REPO and .created_at > $DATE)] | map("- [Reviewed PR #\(.payload.pull_request.number)](\(.payload.review.html_url))") | join("\n")')
-              REPORT+="#### 📝 PR Reviews ($TOTAL_REVIEWS total):\n${REVIEWS:-_No new reviews_\n}\n\n"
-              REPORT+="---\n"
+              PRs=$(echo "$EVENTS" | jq --arg REPO "$REPO" '[.[] | select(.repo.name==$REPO and .type=="PullRequestEvent")] | length')
+              Issues=$(echo "$EVENTS" | jq --arg REPO "$REPO" '[.[] | select(.repo.name==$REPO and .type=="IssuesEvent")] | length')
+              Reviews=$(echo "$EVENTS" | jq --arg REPO "$REPO" '[.[] | select(.repo.name==$REPO and .type=="PullRequestReviewEvent")] | length')
+
+              echo "- **Pull Requests Opened**: $PRs" >> "$REPORT_FILE"
+              echo "- **Issues Opened**: $Issues" >> "$REPORT_FILE"
+              echo "- **Reviews Given**: $Reviews" >> "$REPORT_FILE"
+              echo "" >> "$REPORT_FILE"
             done
           done
-          echo -e "$REPORT" > "$REPORT_FILE"
+
+          echo "Report content:"
+          cat "$REPORT_FILE"
+
+      - name: Debug - Check If File Is Created
+        run: |
+          echo "Checking if report file exists..."
+          ls -l "$REPORT_DIR"
+          cat "$REPORT_FILE"
+
+      - name: Commit and Push Report
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+
+          git add "$REPORT_DIR"
+          git status
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Updated GitHub contributions report for $DATE"
+          git push
