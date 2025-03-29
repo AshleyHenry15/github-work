@@ -3,7 +3,7 @@ name: Generate GitHub Contribution Report
 on:
   schedule:
     - cron: "0 19 * * 5"  # Runs every Friday at 3 PM EST
-  workflow_dispatch:
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
   generate-report:
