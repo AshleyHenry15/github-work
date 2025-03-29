@@ -3,7 +3,7 @@ name: Generate GitHub Contribution Report
 on:
   schedule:
     - cron: "0 19 * * 5"  # Runs every Friday at 3 PM EST
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
 
 jobs:
   generate-report:
@@ -17,7 +17,7 @@ jobs:
           USERNAME="AshleyHenry15"
           TOKEN="${{ secrets.WEEKLYCLASSIC }}"
           DATE=$(TZ="America/New_York" date +"%Y-%m-%d")  
-          REPORT_FILE="reports/contributions-$DATE.md"
+          REPORT_FILE="reports/contributions-$DATE.md"  
           mkdir -p reports
           REPORT="## 📝 Weekly Contribution Report ($DATE)\n\n"
           ORGS=("rstudio" "posit-dev")
@@ -31,6 +31,7 @@ jobs:
           for ORG in "${ORGS[@]}"; do
             EVENTS=$(curl -s -H "Authorization: token $TOKEN" "https://api.github.com/users/$USERNAME/events?per_page=100")
             ACTIVE_REPOS=$(echo "$EVENTS" | jq -r --arg DATE "$DATE_LIMIT" '[.[] | select(.created_at > $DATE) | .repo.name] | unique | .[]')
+            
             if [[ -z "$ACTIVE_REPOS" ]]; then
               continue
             fi
@@ -41,7 +42,6 @@ jobs:
                 continue
               fi
               
-              # Count contributions per category for this repo
               ISSUE_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | length')
               CLOSED_ISSUE_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="closed" and .repo.name==$REPO and .created_at > $DATE)] | length')
               PR_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | length')
@@ -60,7 +60,7 @@ jobs:
               REPORT+="- 🔀 PRs Opened: $PR_COUNT\n"
               REPORT+="- 🔒 PRs Merged: $MERGED_PR_COUNT\n"
               REPORT+="- 📝 PR Reviews: $REVIEW_COUNT\n\n"
-              # Fetch detailed lists
+              # Fetch Detailed Contributions
               ISSUES=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.issue.title)](\(.payload.issue.html_url))") | join("\n")')
               REPORT+="#### 🐞 Issues Opened ($TOTAL_ISSUES total):\n${ISSUES:-_No new issues_\n}\n\n"
               CLOSED_ISSUES=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="closed" and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.issue.title)](\(.payload.issue.html_url))") | join("\n")')
