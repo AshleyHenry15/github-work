@@ -16,6 +16,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 0  # Ensure we get all history
+
+      - name: Pull the latest changes
+        run: git pull origin main  # Ensure we have the latest reports
 
       - name: Find all report files in the reports directory
         id: find_reports
@@ -29,6 +34,11 @@ jobs:
           fi
 
           echo "REPORT_FILES=$report_files" >> $GITHUB_ENV
+
+      - name: Debug - Show Report Files
+        run: |
+          echo "Detected report files:"
+          echo "$REPORT_FILES"
 
       - name: Update README with the list of report links
         run: |
