@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - reports/*.md  # Triggered by new or modified report files
+  workflow_dispatch:  # Allows manual trigger via GitHub Actions UI
 
 jobs:
   update-readme:
