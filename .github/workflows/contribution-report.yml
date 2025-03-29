@@ -1,77 +1,67 @@
-name: Generate GitHub Contribution Report
+name: Generate Contribution Report
 
 on:
   schedule:
-    - cron: "0 19 * * 5"  # Runs every Friday at 3 PM EST
-  workflow_dispatch:
+    - cron: '0 15 * * 5'  # Run every Friday at 3pm EST
+  workflow_dispatch:  # Allows manual triggering
 
 jobs:
-  generate-report:
+  generate_report:
     runs-on: ubuntu-latest
     steps:
+      # Check out the repository
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
 
-      - name: Fetch GitHub Contributions (Last 7 Days)
+      # Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      # Install dependencies
+      - name: Install dependencies
         run: |
-          USERNAME="AshleyHenry15"
-          TOKEN="${{ secrets.WEEKLYCLASSIC }}"
-          DATE=$(TZ="America/New_York" date +"%Y-%m-%d")  
-          REPORT_FILE="reports/contributions-$DATE.md"  
-          mkdir -p reports
-          REPORT="## 📝 Weekly Contribution Report ($DATE)\n\n"
-          ORGS=("rstudio" "posit-dev")
-          DATE_LIMIT=$(TZ="America/New_York" date -d "7 days ago" --utc +"%Y-%m-%dT%H:%M:%SZ")
-          # Global Counters
-          TOTAL_ISSUES=0
-          TOTAL_CLOSED_ISSUES=0
-          TOTAL_PRS=0
-          TOTAL_MERGED_PRS=0
-          TOTAL_REVIEWS=0
-          for ORG in "${ORGS[@]}"; do
-            EVENTS=$(curl -s -H "Authorization: token $TOKEN" "https://api.github.com/users/$USERNAME/events?per_page=100")
-            ACTIVE_REPOS=$(echo "$EVENTS" | jq -r --arg DATE "$DATE_LIMIT" '[.[] | select(.created_at > $DATE) | .repo.name] | unique | .[]')
-            
-            if [[ -z "$ACTIVE_REPOS" ]]; then
-              continue
-            fi
-            
-            REPORT+="## 🔹 Organization: [$ORG](https://github.com/$ORG)\n\n"
-            for REPO in $ACTIVE_REPOS; do
-              if [[ "$REPO" != "$ORG/"* ]]; then
-                continue
-              fi
-              
-              ISSUE_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | length')
-              CLOSED_ISSUE_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="closed" and .repo.name==$REPO and .created_at > $DATE)] | length')
-              PR_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | length')
-              MERGED_PR_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestEvent" and .payload.action=="closed" and .payload.pull_request.merged == true and .repo.name==$REPO and .created_at > $DATE)] | length')
-              REVIEW_COUNT=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestReviewEvent" and .repo.name==$REPO and .created_at > $DATE)] | length')
-              # Update Global Totals
-              TOTAL_ISSUES=$((TOTAL_ISSUES + ISSUE_COUNT))
-              TOTAL_CLOSED_ISSUES=$((TOTAL_CLOSED_ISSUES + CLOSED_ISSUE_COUNT))
-              TOTAL_PRS=$((TOTAL_PRS + PR_COUNT))
-              TOTAL_MERGED_PRS=$((TOTAL_MERGED_PRS + MERGED_PR_COUNT))
-              TOTAL_REVIEWS=$((TOTAL_REVIEWS + REVIEW_COUNT))
-              REPORT+="### 📌 Repository: [$REPO](https://github.com/$REPO)\n\n"
-              REPORT+="**Summary:**\n"
-              REPORT+="- 🐞 Issues Opened: $ISSUE_COUNT\n"
-              REPORT+="- 🚪 Issues Closed: $CLOSED_ISSUE_COUNT\n"
-              REPORT+="- 🔀 PRs Opened: $PR_COUNT\n"
-              REPORT+="- 🔒 PRs Merged: $MERGED_PR_COUNT\n"
-              REPORT+="- 📝 PR Reviews: $REVIEW_COUNT\n\n"
-              # Fetch Detailed Contributions
-              ISSUES=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.issue.title)](\(.payload.issue.html_url))") | join("\n")')
-              REPORT+="#### 🐞 Issues Opened ($TOTAL_ISSUES total):\n${ISSUES:-_No new issues_\n}\n\n"
-              CLOSED_ISSUES=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="IssuesEvent" and .payload.action=="closed" and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.issue.title)](\(.payload.issue.html_url))") | join("\n")')
-              REPORT+="#### 🚪 Issues Closed ($TOTAL_CLOSED_ISSUES total):\n${CLOSED_ISSUES:-_No closed issues_\n}\n\n"
-              PRS=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestEvent" and .payload.action=="opened" and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.pull_request.title)](\(.payload.pull_request.html_url))") | join("\n")')
-              REPORT+="#### 🔀 Pull Requests Opened ($TOTAL_PRS total):\n${PRS:-_No new PRs_\n}\n\n"
-              MERGED_PRS=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestEvent" and .payload.action=="closed" and .payload.pull_request.merged == true and .repo.name==$REPO and .created_at > $DATE)] | map("- [\(.payload.pull_request.title)](\(.payload.pull_request.html_url))") | join("\n")')
-              REPORT+="#### 🔒 Merged Pull Requests ($TOTAL_MERGED_PRS total):\n${MERGED_PRS:-_No merged PRs_\n}\n\n"
-              REVIEWS=$(echo "$EVENTS" | jq -r --arg REPO "$REPO" --arg DATE "$DATE_LIMIT" '[.[] | select(.type=="PullRequestReviewEvent" and .repo.name==$REPO and .created_at > $DATE)] | map("- [Reviewed PR #\(.payload.pull_request.number)](\(.payload.review.html_url))") | join("\n")')
-              REPORT+="#### 📝 PR Reviews ($TOTAL_REVIEWS total):\n${REVIEWS:-_No new reviews_\n}\n\n"
-              REPORT+="---\n"
+          python -m pip install --upgrade pip
+          pip install requests
+
+      # Generate the report
+      - name: Generate contribution report
+        run: |
+          # Fetch the list of repositories for all organizations (rstudio, posit-dev)
+          orgs=("rstudio" "posit-dev")
+          today=$(date +"%Y-%m-%d")
+          report_file="reports/contribution_report_${today}.md"
+
+          echo "# GitHub Contributions Report - ${today}" > $report_file
+          for org in "${orgs[@]}"; do
+            echo "## Organization: $org" >> $report_file
+            # Fetch the repositories for the organization
+            repos=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
+              "https://api.github.com/orgs/$org/repos?type=all&per_page=100" | jq -r '.[].full_name')
+            for repo in $repos; do
+              echo "### Repository: $repo" >> $report_file
+              # Fetch contributions for the repo (PRs, issues, reviews)
+              pr_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
+                "https://api.github.com/repos/$repo/pulls?state=all" | jq '. | length')
+              issue_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
+                "https://api.github.com/repos/$repo/issues?state=all" | jq '. | length')
+              review_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
+                "https://api.github.com/repos/$repo/pulls/reviews?state=all" | jq '. | length')
+
+              echo "  - Pull Requests: $pr_count" >> $report_file
+              echo "  - Issues: $issue_count" >> $report_file
+              echo "  - Reviews: $review_count" >> $report_file
             done
           done
-          echo -e "$REPORT" > "$REPORT_FILE"
+
+      # Commit the report and push it to the repository
+      - name: Commit and push report
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add reports/*
+          git commit -m "Update contribution report for ${today}"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
