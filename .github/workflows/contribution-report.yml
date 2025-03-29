@@ -2,66 +2,47 @@ name: Generate Contribution Report
 
 on:
   schedule:
-    - cron: '0 15 * * 5'  # Run every Friday at 3pm EST
-  workflow_dispatch:  # Allows manual triggering
+    - cron: '0 15 * * 5'  # Runs every Friday at 3pm EST
+  workflow_dispatch:  # Allows manual triggering of the action
 
 jobs:
   generate_report:
     runs-on: ubuntu-latest
+
     steps:
-      # Check out the repository
-      - name: Checkout repository
-        uses: actions/checkout@v2
+    # Checkout the repository
+    - name: Checkout repository
+      uses: actions/checkout@v2
 
-      # Set up Python environment
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
+    # Set up Python environment (assuming you're using Python for processing)
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
 
-      # Install dependencies
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests
+    # Create reports directory if it doesn't exist
+    - name: Create reports directory if it doesn't exist
+      run: mkdir -p reports
 
-      # Generate the report
-      - name: Generate contribution report
-        run: |
-          # Fetch the list of repositories for all organizations (rstudio, posit-dev)
-          orgs=("rstudio" "posit-dev")
-          today=$(date +"%Y-%m-%d")
-          report_file="reports/contribution_report_${today}.md"
+    # Fetch the list of repositories for all organizations (rstudio, posit-dev)
+    - name: Fetch repositories for organizations
+      run: |
+        # Insert your command to fetch repositories here
+        echo "Fetching repositories for rstudio and posit-dev organizations..."
 
-          echo "# GitHub Contributions Report - ${today}" > $report_file
-          for org in "${orgs[@]}"; do
-            echo "## Organization: $org" >> $report_file
-            # Fetch the repositories for the organization
-            repos=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-              "https://api.github.com/orgs/$org/repos?type=all&per_page=100" | jq -r '.[].full_name')
-            for repo in $repos; do
-              echo "### Repository: $repo" >> $report_file
-              # Fetch contributions for the repo (PRs, issues, reviews)
-              pr_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-                "https://api.github.com/repos/$repo/pulls?state=all" | jq '. | length')
-              issue_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-                "https://api.github.com/repos/$repo/issues?state=all" | jq '. | length')
-              review_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-                "https://api.github.com/repos/$repo/pulls/reviews?state=all" | jq '. | length')
+    # Gather contribution data and generate the report (replace this step with your actual script)
+    - name: Generate contribution report
+      run: |
+        # Replace this command with your actual report generation logic
+        echo "Generating contribution report..."
+        # Save the report to the reports directory
+        echo "Report generated!" > reports/contribution_report_$(date +'%Y-%m-%d').md
 
-              echo "  - Pull Requests: $pr_count" >> $report_file
-              echo "  - Issues: $issue_count" >> $report_file
-              echo "  - Reviews: $review_count" >> $report_file
-            done
-          done
-
-      # Commit the report and push it to the repository
-      - name: Commit and push report
-        run: |
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
-          git add reports/*
-          git commit -m "Update contribution report for ${today}"
-          git push origin main
-        env:
-          GITHUB_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
+    # Commit and push the report to the repository
+    - name: Commit and push the report
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git add reports/contribution_report_$(date +'%Y-%m-%d').md
+        git commit -m "Update contribution report for $(date +'%Y-%m-%d')"
+        git push
