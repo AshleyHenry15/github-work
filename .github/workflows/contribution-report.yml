@@ -43,7 +43,11 @@ jobs:
           echo "## Organization: $org" >> $report_file
           # Fetch the repositories for the organization
           repos=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-            "https://api.github.com/orgs/$org/repos?type=all&per_page=100" | jq -r '.[].full_name')
+            "https://api.github.com/orgs/$org/repos?type=all&per_page=100" | jq -r '.[] | select(type == "object") | .full_name')
+          if [ -z "$repos" ]; then
+            echo "No repositories found for organization $org or authentication failed" >> $report_file
+            continue
+          fi
           for repo in $repos; do
             echo "### Repository: $repo" >> $report_file
             # Fetch contributions for the repo (PRs, issues, reviews)
