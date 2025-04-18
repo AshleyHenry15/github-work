@@ -2,73 +2,101 @@ name: Generate GitHub Contribution Report
 
 on:
   schedule:
-    - cron: '0 15 * * 5'  # Runs every Friday at 3pm EST
-  workflow_dispatch:  # Allows manual triggering of the action
+    - cron: '0 15 * * 5' # Every Friday at 3 PM EST
+  workflow_dispatch:
 
 jobs:
   generate-report:
     runs-on: ubuntu-latest
-
+    env:
+      GITHUB_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
     steps:
-    # Checkout the repository
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v3
 
-    # Set up Python environment (assuming you're using Python for processing)
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.x'
+      - name: Set up environment
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          mkdir -p reports
+          START_DATE=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
+          END_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          REPORT_FILE="reports/contribution-report.md"
 
-    # Create reports directory if it doesn't exist
-    - name: Create reports directory if it doesn't exist
-      run: mkdir -p reports
+          echo "# Weekly Contribution Report" > "$REPORT_FILE"
+          echo "_Generated on $(date)_  " >> "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
 
-    # Fetch the list of repositories for all organizations (rstudio, posit-dev)
-    - name: Fetch repositories for organizations
-      run: |
-        # Insert your command to fetch repositories here
-        echo "Fetching repositories for rstudio and posit-dev organizations..."
+          REPOS=(
+            "posit-dev/product-doc-theme"
+            "posit-dev/product-doc-styleguide"
+            "posit-dev/positron-website"
+            "rstudio/shiny-server-pro"
+            "posit-hosted/vivid-docs"
+            "posit-hosted/lucid-cloudyr-docs"
+            "rstudio/quarto-tiers"
+            "rstudio/helm"
+            "posit-dev/rsconnect-python"
+            "rstudio/chronicle"
+            "rstudio/partnership-docs"
+            "rstudio/package-manager"
+            "posit-dev/connect"
+            "rstudio/rstudio"
+            "rstudio/rstudio-pro"
+            "rstudio/docs.rstudio.com"
+            "rstudio/launcher"
+            "rstudio/solutions.posit.co"
+            "posit-hosted/shinyappsio-docs"
+          )
 
-    # Generate the report
-    - name: Generate contribution report
-      run: |
-        # Fetch the list of repositories for all organizations (rstudio, posit-dev)
-        orgs=("rstudio" "posit-dev")
-        today=$(date +"%Y-%m-%d")
-        report_file="reports/contribution_report_${today}.md"
+          for REPO in "${REPOS[@]}"; do
+            echo "📁 Analyzing repo: $REPO"
 
-        echo "# GitHub Contributions Report - ${today}" > $report_file
-        for org in "${orgs[@]}"; do
-          echo "## Organization: $org" >> $report_file
-          # Fetch the repositories for the organization
-          repos=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-            "https://api.github.com/orgs/$org/repos?type=all&per_page=100" | jq -r '.[] | select(type == "object") | .full_name')
-          if [ -z "$repos" ]; then
-            echo "No repositories found for organization $org or authentication failed" >> $report_file
-            continue
-          fi
-          for repo in $repos; do
-            echo "### Repository: $repo" >> $report_file
-            # Fetch contributions for the repo (PRs, issues, reviews)
-            pr_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-              "https://api.github.com/repos/$repo/pulls?state=all" | jq '. | length')
-            issue_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-              "https://api.github.com/repos/$repo/issues?state=all" | jq '. | length')
-            review_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-              "https://api.github.com/repos/$repo/pulls/reviews?state=all" | jq '. | length')
+            # Pull Requests
+            PRs=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/pulls?state=all&per_page=100" | \
+              jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
+              '.[] | select(.user.login == $user and .created_at >= $start and .created_at <= $end) | "- \(.title) ([#\(.number)](\(.html_url)))"')
 
-            echo "  - Pull Requests: $pr_count" >> $report_file
-            echo "  - Issues: $issue_count" >> $report_file
-            echo "  - Reviews: $review_count" >> $report_file
+            # Issues
+            ISSUES=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/issues?state=all&per_page=100" | \
+              jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
+              '.[] | select(.pull_request == null and .user.login == $user and .created_at >= $start and .created_at <= $end) | "- \(.title) ([#\(.number)](\(.html_url)))"')
+
+            # Reviews
+            REVIEWS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/pulls?state=all&per_page=100" | \
+              jq -r '.[] | .number' | while read pr; do
+                curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                  "https://api.github.com/repos/$REPO/pulls/$pr/reviews" | \
+                  jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
+                  '.[] | select(.user.login == $user and .submitted_at >= $start and .submitted_at <= $end) | "- PR #'"$pr"' review ([link](\(.html_url)))"'
+              done)
+
+            # Commits
+            COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/commits?author=AshleyHenry15&since=$START_DATE&until=$END_DATE" | \
+              jq -r '.[] | "- \(.commit.message | split("\n")[0]) ([link](\(.html_url)))"')
+
+            if [[ -n "$PRs$ISSUES$REVIEWS$COMMITS" ]]; then
+              echo "## $REPO" >> "$REPORT_FILE"
+
+              [[ -n "$PRs" ]] && echo -e "🔃 **Pull Requests**\n$PRs\n" >> "$REPORT_FILE"
+              [[ -n "$ISSUES" ]] && echo -e "🐞 **Issues**\n$ISSUES\n" >> "$REPORT_FILE"
+              [[ -n "$REVIEWS" ]] && echo -e "👀 **Reviews**\n$REVIEWS\n" >> "$REPORT_FILE"
+              [[ -n "$COMMITS" ]] && echo -e "📝 **Commits**\n$COMMITS\n" >> "$REPORT_FILE"
+
+              echo "" >> "$REPORT_FILE"
+            fi
           done
-        done
 
-    # Commit and push the report to the repository
-    - name: Commit and push the report
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
-        git add reports/contribution_report_$(date +'%Y-%m-%d').md
-        git commit -m "Update contribution report for $(date +'%Y-%m-%d')"
-        git push
+      - name: Commit and push report
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git pull origin main
+          TIMESTAMP=$(date +'%Y-%m-%d')
+          cp "$REPORT_FILE" "reports/report-$TIMESTAMP.md"
+          git add reports/
+          git commit -m "📊 Weekly contribution report ($TIMESTAMP)"
+          git push
