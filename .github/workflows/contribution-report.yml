@@ -36,81 +36,96 @@ jobs:
           fi
           echo "✅ Authenticated as $user"
 
-          - name: Generate contribution report
-          env:
-            GH_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
-          run: |
-            USER="AshleyHenry15"
-            orgs=("rstudio" "posit-dev")
-            today=$(date +"%Y-%m-%d")
-            since=$(date -d "7 days ago" --iso-8601=seconds)
-            report_file="reports/contribution_report_${today}.md"
-        
-            echo "📝 Weekly Contribution Report (${today})" > $report_file
-        
-            for org in "${orgs[@]}"; do
-              echo -e "🔹 Organization: $org\n" >> $report_file
-        
-              repos=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                "https://api.github.com/orgs/$org/repos?per_page=100" | jq -r '.[].full_name')
-        
-              if [ -z "$repos" ]; then
-                echo "::error ::No repositories found for $org or authentication failed"
-                exit 1
+      - name: 📝 Generate contribution report
+        env:
+          GH_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
+        run: |
+          USER="AshleyHenry15"
+          orgs=("rstudio" "posit-dev")
+          today=$(date +"%Y-%m-%d")
+          since=$(date -d "7 days ago" --iso-8601=seconds)
+          report_file="reports/contribution_report_${today}.md"
+
+          echo "📝 Weekly Contribution Report (${today})" > $report_file
+
+          for org in "${orgs[@]}"; do
+            echo -e "\n🔹 **Organization:** $org" >> $report_file
+
+            repos=$(curl -s -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/orgs/$org/repos?per_page=100" | jq -r '.[].full_name')
+
+            if [ -z "$repos" ]; then
+              echo "::error ::No repositories found for $org or authentication failed"
+              exit 1
+            fi
+
+            for repo in $repos; do
+              echo -e "\n📌 **Repository:** $repo" >> $report_file
+
+              # Issues Opened
+              issues_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/issues?state=all&since=$since&per_page=100" | \
+                jq -r --arg USER "$USER" --arg since "$since" \
+                '.[] | select(.user.login == $USER and .pull_request? | not and .created_at >= $since) | "  - 🐞 \(.title)"')
+
+              if [ -n "$issues_opened" ]; then
+                echo "🐞 **Issues Opened:**" >> $report_file
+                echo "$issues_opened" >> $report_file
               fi
-        
-              for repo in $repos; do
-                echo "📌 Repository: $repo" >> $report_file
-        
-                # Issues Opened
-                issues_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                  "https://api.github.com/repos/$repo/issues?state=all&since=$since&per_page=100" | \
+
+              # Issues Closed
+              issues_closed=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/issues?state=closed&since=$since&per_page=100" | \
+                jq -r --arg USER "$USER" --arg since "$since" \
+                '.[] | select(.user.login == $USER and .pull_request? | not and .closed_at >= $since) | "  - 🚪 \(.title)"')
+
+              if [ -n "$issues_closed" ]; then
+                echo "🚪 **Issues Closed:**" >> $report_file
+                echo "$issues_closed" >> $report_file
+              fi
+
+              # Pull Requests Opened
+              prs_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/pulls?state=all&per_page=100" | \
+                jq -r --arg USER "$USER" --arg since "$since" \
+                '.[] | select(.user.login == $USER and .created_at >= $since) | "  - 🔀 \(.title)"')
+
+              if [ -n "$prs_opened" ]; then
+                echo "🔀 **Pull Requests Opened:**" >> $report_file
+                echo "$prs_opened" >> $report_file
+              fi
+
+              # Pull Requests Merged
+              prs_merged=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/pulls?state=closed&per_page=100" | \
+                jq -r --arg USER "$USER" --arg since "$since" \
+                '.[] | select(.merged_by.login == $USER and .merged_at >= $since) | "  - 🔒 \(.title)"')
+
+              if [ -n "$prs_merged" ]; then
+                echo "🔒 **Merged Pull Requests:**" >> $report_file
+                echo "$prs_merged" >> $report_file
+              fi
+
+              # Pull Request Reviews
+              pr_numbers=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/pulls?state=all&per_page=100" | jq -r '.[].number')
+
+              for pr in $pr_numbers; do
+                reviews=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                  "https://api.github.com/repos/$repo/pulls/$pr/reviews" | \
                   jq -r --arg USER "$USER" --arg since "$since" \
-                  '.[] | select(.user.login == $USER and .pull_request? | not and .created_at >= $since) | "  - \(.title)"')
-        
-                if [ -n "$issues_opened" ]; then
-                  echo "🐞 Issues Opened:" >> $report_file
-                  echo "$issues_opened" >> $report_file
+                  '.[] | select(.user.login == $USER and .submitted_at >= $since) | "  - 💬 Review on PR #'${pr}'"')
+
+                if [ -n "$reviews" ]; then
+                  echo "💬 **PR Reviews:**" >> $report_file
+                  echo "$reviews" >> $report_file
                 fi
-        
-                # Issues Closed
-                issues_closed=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                  "https://api.github.com/repos/$repo/issues?state=closed&since=$since&per_page=100" | \
-                  jq -r --arg USER "$USER" --arg since "$since" \
-                  '.[] | select(.user.login == $USER and .pull_request? | not and .closed_at >= $since) | "  - \(.title)"')
-        
-                if [ -n "$issues_closed" ]; then
-                  echo "🚪 Issues Closed:" >> $report_file
-                  echo "$issues_closed" >> $report_file
-                fi
-        
-                # Pull Requests Opened
-                prs_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                  "https://api.github.com/repos/$repo/pulls?state=all&per_page=100" | \
-                  jq -r --arg USER "$USER" --arg since "$since" \
-                  '.[] | select(.user.login == $USER and .created_at >= $since) | "  - \(.title)"')
-        
-                if [ -n "$prs_opened" ]; then
-                  echo "🔀 Pull Requests Opened:" >> $report_file
-                  echo "$prs_opened" >> $report_file
-                fi
-        
-                # Pull Requests Merged
-                prs_merged=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                  "https://api.github.com/repos/$repo/pulls?state=closed&per_page=100" | \
-                  jq -r --arg USER "$USER" --arg since "$since" \
-                  '.[] | select(.merged_by.login == $USER and .merged_at >= $since) | "  - \(.title)"')
-        
-                if [ -n "$prs_merged" ]; then
-                  echo "🔒 Merged Pull Requests:" >> $report_file
-                  echo "$prs_merged" >> $report_file
-                fi
-        
-                echo "" >> $report_file
               done
+
             done
-        
-      - name: Commit and push the report
+          done
+
+      - name: 📤 Commit and push the report
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
