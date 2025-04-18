@@ -43,7 +43,7 @@ jobs:
           USER="AshleyHenry15"
           orgs=("rstudio" "posit-dev")
           today=$(date +"%Y-%m-%d")
-          one_week_ago=$(date -d "7 days ago" +"%Y-%m-%dT%H:%M:%SZ")
+          one_week_ago=$(date -d "7 days ago" +"%Y-%m-%d")
           report_file="reports/contribution_report_${today}.md"
 
           echo "📝 Weekly Contribution Report (${today})" > $report_file
@@ -65,8 +65,7 @@ jobs:
               # Issues Opened
               issues_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
                 "https://api.github.com/repos/$repo/issues?state=all&per_page=100" | \
-                jq -r --arg USER "$USER" --arg DATE "$one_week_ago" \
-                '.[] | select(.user.login == $USER and (.pull_request | not) and (.created_at // "") > $DATE) | "  - \(.title)"')
+                jq -r --arg USER "$USER" '.[] | select(.user.login == $USER and .pull_request? | not) | "  - \(.title)"')
 
               if [ -n "$issues_opened" ]; then
                 echo "🐞 Issues Opened:" >> $report_file
@@ -76,8 +75,7 @@ jobs:
               # Issues Closed
               issues_closed=$(curl -s -H "Authorization: token $GH_TOKEN" \
                 "https://api.github.com/repos/$repo/issues?state=closed&per_page=100" | \
-                jq -r --arg USER "$USER" --arg DATE "$one_week_ago" \
-                '.[] | select(.user.login == $USER and (.pull_request | not) and (.closed_at // "") > $DATE) | "  - \(.title)"')
+                jq -r --arg USER "$USER" '.[] | select(.user.login == $USER and .pull_request? | not) | "  - \(.title)"')
 
               if [ -n "$issues_closed" ]; then
                 echo "🚪 Issues Closed:" >> $report_file
@@ -87,8 +85,7 @@ jobs:
               # Pull Requests Opened
               prs_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
                 "https://api.github.com/repos/$repo/pulls?state=all&per_page=100" | \
-                jq -r --arg USER "$USER" --arg DATE "$one_week_ago" \
-                '.[] | select(.user.login == $USER and (.created_at // "") > $DATE) | "  - \(.title)"')
+                jq -r --arg USER "$USER" '.[] | select(.user.login == $USER) | "  - \(.title)"')
 
               if [ -n "$prs_opened" ]; then
                 echo "🔀 Pull Requests Opened:" >> $report_file
@@ -98,8 +95,7 @@ jobs:
               # Pull Requests Merged
               prs_merged=$(curl -s -H "Authorization: token $GH_TOKEN" \
                 "https://api.github.com/repos/$repo/pulls?state=closed&per_page=100" | \
-                jq -r --arg USER "$USER" --arg DATE "$one_week_ago" \
-                '.[] | select(.merged_by.login == $USER and (.merged_at // "") > $DATE) | "  - \(.title)"')
+                jq -r --arg USER "$USER" '.[] | select(.merged_by.login == $USER) | "  - \(.title)"')
 
               if [ -n "$prs_merged" ]; then
                 echo "🔒 Merged Pull Requests:" >> $report_file
