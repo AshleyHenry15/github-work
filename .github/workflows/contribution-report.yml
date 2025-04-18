@@ -40,7 +40,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
         run: |
-          USER="ashleyhenry15"
+          USER="AshleyHenry15"
           orgs=("rstudio" "posit-dev")
           today=$(date +"%Y-%m-%d")
           report_file="reports/contribution_report_${today}.md"
