@@ -1,111 +1,102 @@
 name: Generate GitHub Contribution Report
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 19 * * 5' # 3pm EST Fridays
+    - cron: '0 15 * * 5' # Every Friday at 3 PM EST
+  workflow_dispatch:
 
 jobs:
   generate-report:
     runs-on: ubuntu-latest
-
+    env:
+      GITHUB_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install jq and gh
+      - name: Set up environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq gh
-
-      - name: Authenticate token
-        run: |
-          echo "🔐 Checking token authentication..."
-          user=$(curl -s -H "Authorization: token $WEEKLY_TOKEN" https://api.github.com/user | jq -r '.login')
-          if [[ "$user" != "AshleyHenry15" ]]; then
-            echo "::error ::Token authentication failed. Expected 'AshleyHenry15', got '$user'"
-            exit 1
-          fi
-          echo "✅ Authenticated as $user"
-        env:
-          WEEKLY_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
-
-      - name: Generate GitHub contribution report
-        run: |
+          sudo apt-get update && sudo apt-get install -y jq
           mkdir -p reports
+          START_DATE=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
+          END_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           REPORT_FILE="reports/contribution-report.md"
-          echo "# 🧾 Weekly GitHub Contributions Report" > "$REPORT_FILE"
+
+          echo "# Weekly Contribution Report" > "$REPORT_FILE"
+          echo "_Generated on $(date)_  " >> "$REPORT_FILE"
           echo "" >> "$REPORT_FILE"
-          echo "_Generated on $(date)_" >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
 
-          START_DATE=$(date -d "7 days ago" +"%Y-%m-%dT%H:%M:%SZ")
-          END_DATE=$(date +"%Y-%m-%dT%H:%M:%SZ")
+          REPOS=(
+            "posit-dev/product-doc-theme"
+            "posit-dev/product-doc-styleguide"
+            "posit-dev/positron-website"
+            "rstudio/shiny-server-pro"
+            "posit-hosted/vivid-docs"
+            "posit-hosted/lucid-cloudyr-docs"
+            "rstudio/quarto-tiers"
+            "rstudio/helm"
+            "posit-dev/rsconnect-python"
+            "rstudio/chronicle"
+            "rstudio/partnership-docs"
+            "rstudio/package-manager"
+            "posit-dev/connect"
+            "rstudio/rstudio"
+            "rstudio/rstudio-pro"
+            "rstudio/docs.rstudio.com"
+            "rstudio/launcher"
+            "rstudio/solutions.posit.co"
+            "posit-hosted/shinyappsio-docs"
+          )
 
-          declare -a ORGS=("rstudio" "posit-dev")
-          declare -A contributions
+          for REPO in "${REPOS[@]}"; do
+            echo "📁 Analyzing repo: $REPO"
 
-          for ORG in "${ORGS[@]}"; do
-            echo "📦 Fetching repos for org: $ORG"
-            REPOS=$(curl -s -H "Authorization: token $WEEKLY_TOKEN" "https://api.github.com/orgs/$ORG/repos?per_page=100" | jq -r '.[]?.full_name')
+            # Pull Requests
+            PRs=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/pulls?state=all&per_page=100" | \
+              jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
+              '.[] | select(.user.login == $user and .created_at >= $start and .created_at <= $end) | "- \(.title) ([#\(.number)](\(.html_url)))"')
 
-            for REPO in $REPOS; do
-              echo "📁 Analyzing repo: $REPO"
+            # Issues
+            ISSUES=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/issues?state=all&per_page=100" | \
+              jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
+              '.[] | select(.pull_request == null and .user.login == $user and .created_at >= $start and .created_at <= $end) | "- \(.title) ([#\(.number)](\(.html_url)))"')
 
-              # Pull Requests
-              PRs=$(curl -s -H "Authorization: token $WEEKLY_TOKEN" \
-                "https://api.github.com/repos/$REPO/pulls?state=all&per_page=100" | \
-                jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
-                '.[] | select(.user.login == $user and .created_at >= $start and .created_at <= $end) | "- \(.title) ([#\(.number)](\(.html_url)))"')
+            # Reviews
+            REVIEWS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/pulls?state=all&per_page=100" | \
+              jq -r '.[] | .number' | while read pr; do
+                curl -s -H "Authorization: token $GITHUB_TOKEN" \
+                  "https://api.github.com/repos/$REPO/pulls/$pr/reviews" | \
+                  jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
+                  '.[] | select(.user.login == $user and .submitted_at >= $start and .submitted_at <= $end) | "- PR #'"$pr"' review ([link](\(.html_url)))"'
+              done)
 
-              # Issues
-              ISSUES=$(curl -s -H "Authorization: token $WEEKLY_TOKEN" \
-                "https://api.github.com/repos/$REPO/issues?state=all&per_page=100" | \
-                jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
-                '.[] | select(.pull_request == null and .user.login == $user and .created_at >= $start and .created_at <= $end) | "- \(.title) ([#\(.number)](\(.html_url)))"')
+            # Commits
+            COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/commits?author=AshleyHenry15&since=$START_DATE&until=$END_DATE" | \
+              jq -r '.[] | "- \(.commit.message | split("\n")[0]) ([link](\(.html_url)))"')
 
-              # Reviews
-              REVIEWS=$(curl -s -H "Authorization: token $WEEKLY_TOKEN" \
-                "https://api.github.com/repos/$REPO/pulls?state=all&per_page=100" | \
-                jq -r '.[] | .number' | while read pr; do
-                  curl -s -H "Authorization: token $WEEKLY_TOKEN" \
-                    "https://api.github.com/repos/$REPO/pulls/$pr/reviews" | \
-                    jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
-                    '.[] | select(.user.login == $user and .submitted_at >= $start and .submitted_at <= $end) | "- PR #'"$pr"' review ([link](\(.html_url)))"'
-                done)
+            if [[ -n "$PRs$ISSUES$REVIEWS$COMMITS" ]]; then
+              echo "## $REPO" >> "$REPORT_FILE"
 
-              # Commits
-              COMMITS=$(curl -s -H "Authorization: token $WEEKLY_TOKEN" \
-                "https://api.github.com/repos/$REPO/commits?author=AshleyHenry15&since=$START_DATE&until=$END_DATE" | \
-                jq -r '.[] | "- \(.commit.message | split("\n")[0]) ([link](\(.html_url)))"')
+              [[ -n "$PRs" ]] && echo -e "🔃 **Pull Requests**\n$PRs\n" >> "$REPORT_FILE"
+              [[ -n "$ISSUES" ]] && echo -e "🐞 **Issues**\n$ISSUES\n" >> "$REPORT_FILE"
+              [[ -n "$REVIEWS" ]] && echo -e "👀 **Reviews**\n$REVIEWS\n" >> "$REPORT_FILE"
+              [[ -n "$COMMITS" ]] && echo -e "📝 **Commits**\n$COMMITS\n" >> "$REPORT_FILE"
 
-              if [[ -n "$PRs$ISSUES$REVIEWS$COMMITS" ]]; then
-                echo "## $REPO" >> "$REPORT_FILE"
-
-                [[ -n "$PRs" ]] && echo -e "🔃 **Pull Requests**\n$PRs\n" >> "$REPORT_FILE"
-                [[ -n "$ISSUES" ]] && echo -e "🐞 **Issues**\n$ISSUES\n" >> "$REPORT_FILE"
-                [[ -n "$REVIEWS" ]] && echo -e "👀 **Reviews**\n$REVIEWS\n" >> "$REPORT_FILE"
-                [[ -n "$COMMITS" ]] && echo -e "📝 **Commits**\n$COMMITS\n" >> "$REPORT_FILE"
-
-                echo "" >> "$REPORT_FILE"
-              fi
-            done
+              echo "" >> "$REPORT_FILE"
+            fi
           done
-
-          cat "$REPORT_FILE"
-
-        env:
-          WEEKLY_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
 
       - name: Commit and push report
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git add reports/contribution-report.md
-          git commit -m "🧾 Add weekly contribution report [skip ci]" || echo "No changes to commit"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git pull origin main
+          TIMESTAMP=$(date +'%Y-%m-%d')
+          cp "$REPORT_FILE" "reports/report-$TIMESTAMP.md"
+          git add reports/
+          git commit -m "📊 Weekly contribution report ($TIMESTAMP)"
           git push
