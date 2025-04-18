@@ -24,6 +24,18 @@ jobs:
       - name: Create reports directory
         run: mkdir -p reports
 
+      - name: ✅ Check token authentication
+        env:
+          GH_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
+        run: |
+          echo "🔐 Checking token authentication..."
+          user=$(curl -s -H "Authorization: token $GH_TOKEN" https://api.github.com/user | jq -r '.login')
+          if [[ "$user" != "ashleyhenry15" ]]; then
+            echo "::error ::Token authentication failed. Expected 'ashleyhenry15', got '$user'"
+            exit 1
+          fi
+          echo "✅ Authenticated as $user"
+
       - name: Generate contribution report
         env:
           GH_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
