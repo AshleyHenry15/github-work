@@ -30,8 +30,8 @@ jobs:
         run: |
           echo "🔐 Checking token authentication..."
           user=$(curl -s -H "Authorization: token $GH_TOKEN" https://api.github.com/user | jq -r '.login')
-          if [[ "$user" != "ashleyhenry15" ]]; then
-            echo "::error ::Token authentication failed. Expected 'ashleyhenry15', got '$user'"
+          if [[ "$user" != "AshleyHenry15" ]]; then
+            echo "::error ::Token authentication failed. Expected 'AshleyHenry15', got '$user'"
             exit 1
           fi
           echo "✅ Authenticated as $user"
