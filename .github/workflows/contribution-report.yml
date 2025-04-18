@@ -2,71 +2,116 @@ name: Generate GitHub Contribution Report
 
 on:
   schedule:
-    - cron: '0 15 * * 5'  # Runs every Friday at 3pm EST
-  workflow_dispatch:  # Allows manual triggering of the action
+    - cron: '0 15 * * 5'  # Every Friday at 3pm EST
+  workflow_dispatch:
 
 jobs:
   generate-report:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      # Set up Python environment (if needed)
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
           python-version: '3.x'
 
-      # Create reports directory
-      - name: Create reports directory if it doesn't exist
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Create reports directory
         run: mkdir -p reports
 
-      # Generate the report
       - name: Generate contribution report
+        env:
+          GH_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
         run: |
+          USER="ashleyhenry15"
           orgs=("rstudio" "posit-dev")
           today=$(date +"%Y-%m-%d")
           report_file="reports/contribution_report_${today}.md"
-          echo "# GitHub Contributions Report - ${today}" > $report_file
+
+          echo "📝 Weekly Contribution Report (${today})" > $report_file
 
           for org in "${orgs[@]}"; do
-            echo "## Organization: $org" >> $report_file
-            echo "Fetching repositories for $org..."
+            echo -e "🔹 Organization: $org\n" >> $report_file
 
-            repos=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-              "https://api.github.com/orgs/$org/repos?type=all&per_page=100" | jq -r '.[] | select(type == "object") | .full_name')
+            repos=$(curl -s -H "Authorization: token $GH_TOKEN" \
+              "https://api.github.com/orgs/$org/repos?per_page=100" | jq -r '.[].full_name')
 
             if [ -z "$repos" ]; then
-              echo "::error ::No repositories found for organization $org or authentication failed"
+              echo "::error ::No repositories found for $org or authentication failed"
               exit 1
             fi
 
             for repo in $repos; do
-              echo "### Repository: $repo" >> $report_file
+              echo "📌 Repository: $repo" >> $report_file
 
-              pr_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-                "https://api.github.com/repos/$repo/pulls?state=all" | jq '. | length')
+              # Issues Opened
+              issues_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/issues?state=all&per_page=100" | \
+                jq -r --arg USER "$USER" '.[] | select(.user.login == $USER and .pull_request? | not) | "  - \(.title)"')
 
-              issue_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-                "https://api.github.com/repos/$repo/issues?state=all" | jq '. | length')
+              if [ -n "$issues_opened" ]; then
+                echo "🐞 Issues Opened:" >> $report_file
+                echo "$issues_opened" >> $report_file
+              fi
 
-              review_count=$(curl -s -H "Authorization: token ${{ secrets.WEEKLY_TOKEN }}" \
-                "https://api.github.com/repos/$repo/pulls/comments?state=all" | jq '. | length')
+              # Issues Closed
+              issues_closed=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/issues?state=closed&per_page=100" | \
+                jq -r --arg USER "$USER" '.[] | select(.user.login == $USER and .pull_request? | not) | "  - \(.title)"')
 
-              echo "  - Pull Requests: $pr_count" >> $report_file
-              echo "  - Issues: $issue_count" >> $report_file
-              echo "  - Reviews: $review_count" >> $report_file
+              if [ -n "$issues_closed" ]; then
+                echo "🚪 Issues Closed:" >> $report_file
+                echo "$issues_closed" >> $report_file
+              fi
+
+              # Pull Requests Opened
+              prs_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/pulls?state=all&per_page=100" | \
+                jq -r --arg USER "$USER" '.[] | select(.user.login == $USER) | "  - \(.title)"')
+
+              if [ -n "$prs_opened" ]; then
+                echo "🔀 Pull Requests Opened:" >> $report_file
+                echo "$prs_opened" >> $report_file
+              fi
+
+              # Pull Requests Merged
+              prs_merged=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/pulls?state=closed&per_page=100" | \
+                jq -r --arg USER "$USER" '.[] | select(.merged_by.login == $USER) | "  - \(.title)"')
+
+              if [ -n "$prs_merged" ]; then
+                echo "🔒 Merged Pull Requests:" >> $report_file
+                echo "$prs_merged" >> $report_file
+              fi
+
+              # Reviews
+              reviews=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/pulls?state=all&per_page=30" | \
+                jq -r --arg REPO "$repo" --arg USER "$USER" '.[] | .number' | \
+                while read pr_number; do
+                  curl -s -H "Authorization: token $GH_TOKEN" \
+                    "https://api.github.com/repos/$repo/pulls/$pr_number/reviews" | \
+                    jq -r --arg USER "$USER" '.[] | select(.user.login == $USER) | "  - Review on PR #\(.pull_request_url | split("/")[-1])"'
+                done)
+
+              if [ -n "$reviews" ]; then
+                echo "💬 PR Reviews:" >> $report_file
+                echo "$reviews" >> $report_file
+              fi
+
+              echo "" >> $report_file
             done
           done
 
-      # Commit and push the report
       - name: Commit and push the report
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add reports/contribution_report_$(date +'%Y-%m-%d').md
-          git commit -m "Update contribution report for $(date +'%Y-%m-%d')"
+          git commit -m "📝 Weekly Contribution Report ($(date +'%Y-%m-%d'))"
           git push
