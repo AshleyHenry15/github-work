@@ -1,131 +1,22 @@
-name: Generate GitHub Contribution Report
-
-on:
-  schedule:
-    - cron: '0 15 * * 5'  # Every Friday at 3pm EST
-  workflow_dispatch:
-
-jobs:
-  generate-report:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.x'
-
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
-      - name: Create reports directory
-        run: mkdir -p reports
-
-      - name: ✅ Check token authentication
-        env:
-          GH_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
-        run: |
-          echo "🔐 Checking token authentication..."
-          user=$(curl -s -H "Authorization: token $GH_TOKEN" https://api.github.com/user | jq -r '.login')
-          if [[ "$user" != "AshleyHenry15" ]]; then
-            echo "::error ::Token authentication failed. Expected 'AshleyHenry15', got '$user'"
-            exit 1
-          fi
-          echo "✅ Authenticated as $user"
-
-      - name: Generate contribution report
-        env:
-          GH_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
-        run: |
-          USER="AshleyHenry15"
-          orgs=("rstudio" "posit-dev")
-          today=$(date +"%Y-%m-%d")
-          one_week_ago=$(date -d "7 days ago" +"%Y-%m-%d")
-          report_file="reports/contribution_report_${today}.md"
-
-          echo "📝 Weekly Contribution Report (${today})" > $report_file
-
-          for org in "${orgs[@]}"; do
-            echo -e "🔹 Organization: $org\n" >> $report_file
-
-            repos=$(curl -s -H "Authorization: token $GH_TOKEN" \
-              "https://api.github.com/orgs/$org/repos?per_page=100" | jq -r '.[].full_name')
-
-            if [ -z "$repos" ]; then
-              echo "::error ::No repositories found for $org or authentication failed"
-              exit 1
-            fi
-
-            for repo in $repos; do
-              echo "📌 Repository: $repo" >> $report_file
-
-              # Issues Opened
-              issues_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                "https://api.github.com/repos/$repo/issues?state=all&per_page=100" | \
-                jq -r --arg USER "$USER" '.[] | select(.user.login == $USER and .pull_request? | not) | "  - \(.title)"')
-
-              if [ -n "$issues_opened" ]; then
-                echo "🐞 Issues Opened:" >> $report_file
-                echo "$issues_opened" >> $report_file
-              fi
-
-              # Issues Closed
-              issues_closed=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                "https://api.github.com/repos/$repo/issues?state=closed&per_page=100" | \
-                jq -r --arg USER "$USER" '.[] | select(.user.login == $USER and .pull_request? | not) | "  - \(.title)"')
-
-              if [ -n "$issues_closed" ]; then
-                echo "🚪 Issues Closed:" >> $report_file
-                echo "$issues_closed" >> $report_file
-              fi
-
-              # Pull Requests Opened
-              prs_opened=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                "https://api.github.com/repos/$repo/pulls?state=all&per_page=100" | \
-                jq -r --arg USER "$USER" '.[] | select(.user.login == $USER) | "  - \(.title)"')
-
-              if [ -n "$prs_opened" ]; then
-                echo "🔀 Pull Requests Opened:" >> $report_file
-                echo "$prs_opened" >> $report_file
-              fi
-
-              # Pull Requests Merged
-              prs_merged=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                "https://api.github.com/repos/$repo/pulls?state=closed&per_page=100" | \
-                jq -r --arg USER "$USER" '.[] | select(.merged_by.login == $USER) | "  - \(.title)"')
-
-              if [ -n "$prs_merged" ]; then
-                echo "🔒 Merged Pull Requests:" >> $report_file
-                echo "$prs_merged" >> $report_file
-              fi
-
-              # PR Reviews
-              pr_reviews=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                "https://api.github.com/repos/$repo/pulls?state=all&per_page=100" | \
-                jq -r '.[].number' | while read pr_number; do
-                  reviews=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                    "https://api.github.com/repos/$repo/pulls/$pr_number/reviews" | \
-                    jq -r --arg USER "$USER" --arg DATE "$one_week_ago" \
-                    '.[] | select(.user.login == $USER and (.submitted_at // "") > $DATE) | "  - Review on PR #\(.pull_request_url | split("/") | .[-1]) by \(.user.login)"')
-                  echo "$reviews"
-                done)
-
-              if [ -n "$pr_reviews" ]; then
-                echo "💬 PR Reviews:" >> $report_file
-                echo "$pr_reviews" >> $report_file
-              fi
-
-              echo "" >> $report_file
-            done
-          done
-
-      - name: Commit and push the report
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git add reports/contribution_report_$(date +'%Y-%m-%d').md
-          git commit -m "📝 Weekly Contribution Report ($(date +'%Y-%m-%d'))"
-          git push
+- name: Fetch repositories from multiple organizations
+id: fetch_repos
+run: |
+  # List of organizations
+  orgs=("rstudio" "posit-dev")  # Updated with your organizations
+  token="${{ secrets.WEEKLY }}"  # Using your new token
+  repos=""
+  # Loop through each organization and fetch repositories
+  for org in "${orgs[@]}"; do
+    echo "Fetching repositories for organization: $org"
+    response=$(curl -H "Authorization: token $token" \
+                     "https://api.github.com/orgs/$org/repos?per_page=100")
+    
+    # Debugging: Print raw response
+    echo "Response from GitHub API:"
+    echo "$response"
+    # Check if response is an array and contain 'full_name'
+    # If the response is not an array, we should inspect and adjust accordingly
+    org_repos=$(echo "$response" | jq -r 'if type == "array" then .[] | .full_name else "No valid repos" end')
+    # Append repos to the list
+    repos+="$org_repos\n"
+  done
