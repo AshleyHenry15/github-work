@@ -102,19 +102,23 @@ jobs:
               fi
 
               # Reviews
-              reviews=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                "https://api.github.com/repos/$repo/pulls?state=all&per_page=30" | \
-                jq -r --arg REPO "$repo" --arg USER "$USER" '.[] | .number' | \
-                while read pr_number; do
-                  curl -s -H "Authorization: token $GH_TOKEN" \
-                    "https://api.github.com/repos/$repo/pulls/$pr_number/reviews" | \
-                    jq -r --arg USER "$USER" '.[] | select(.user.login == $USER) | "  - Review on PR #\(.pull_request_url | split("/")[-1])"'
-                done)
+              echo "💬 PR Reviews:" >> $report_file
+              review_count=0
 
-              if [ -n "$reviews" ]; then
-                echo "💬 PR Reviews:" >> $report_file
-                echo "$reviews" >> $report_file
+              pr_numbers=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$repo/pulls?state=all&per_page=30" | jq -r '.[].number')
+
+              for pr_number in $pr_numbers; do
+                curl -s -H "Authorization: token $GH_TOKEN" \
+                  "https://api.github.com/repos/$repo/pulls/$pr_number/reviews" | \
+                  jq -r --arg USER "$USER" '.[] | select(.user.login == $USER) | "  - Review on PR #" + (.pull_request_url | split("/")[-1])' >> $report_file
+              done
+
+              # Remove the section if no reviews were added
+              if ! grep -q "  - Review on PR #" $report_file; then
+                sed -i '' -e '/💬 PR Reviews:/d' $report_file
               fi
+
 
               echo "" >> $report_file
             done
