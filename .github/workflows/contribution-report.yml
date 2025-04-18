@@ -100,18 +100,7 @@ jobs:
                 echo "🔒 Merged Pull Requests:" >> $report_file
                 echo "$prs_merged" >> $report_file
               fi
-
-              # Reviews
-              echo "💬 PR Reviews:" >> $report_file
-              review_count=0
-
-              pr_numbers=$(curl -s -H "Authorization: token $GH_TOKEN" \
-                "https://api.github.com/repos/$repo/pulls?state=all&per_page=30" | jq -r '.[].number')
-
-              for pr_number in $pr_numbers; do
-                curl -s -H "Authorization: token $GH_TOKEN" \
-                  "https://api.github.com/repos/$repo/pulls/$pr_number/reviews" | \
-                  jq -r --arg USER "$USER" '.[] | select(.user.login == $USER) | "  - Review on PR #" + (.pull_request_url | split("/")[-1])' >> $report_file
+              
               done
 
               # Remove the section if no reviews were added
