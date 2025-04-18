@@ -117,7 +117,6 @@ jobs:
               # Remove the section if no reviews were added
               if ! grep -q "  - Review on PR #" $report_file; then
                 sed -i '/💬 PR Reviews:/d' $report_file
-
               fi
 
               echo "" >> $report_file
