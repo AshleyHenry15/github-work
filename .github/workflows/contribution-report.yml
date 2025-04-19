@@ -54,62 +54,86 @@ jobs:
           repos = os.environ["REPOS"].strip().splitlines()
           g = Github(token)
 
-          user = "AshleyHenry15"
           utc = pytz.UTC
           since = datetime.utcnow().replace(tzinfo=utc) - timedelta(days=7)
           until = datetime.utcnow().replace(tzinfo=utc)
+
           timestamp = datetime.utcnow().strftime('%Y-%m-%d')
           output_path = f"reports/report-{timestamp}.md"
 
           os.makedirs("reports", exist_ok=True)
+
+          summary_data = []  # For the table
+
           with open(output_path, "w", encoding="utf-8") as f:
-              f.write(f"# 📊 GitHub Contribution Report ({timestamp})\\n\\n")
+              f.write(f"# 📊 GitHub Contribution Report ({timestamp})\n\n")
+
+              # Build detailed content first and track counts
+              detailed_report = ""
 
               for repo_name in repos:
                   repo = g.get_repo(repo_name)
-                  print(f"🔍 Checking {repo.full_name}...")
-                  f.write(f"## 📘 {repo.full_name}\\n")
+                  user = g.get_user().login
 
-                  # Pull Requests
-                  f.write("### 🔧 Pull Requests\\n")
-                  pr_found = False
-                  for pr in repo.get_pulls(state="all", sort="created", direction="desc"):
-                      if pr.created_at < since:
-                          break
-                      if pr.user.login == user:
-                          f.write(f"- [#{pr.number}] {pr.title}\\n")
-                          pr_found = True
-                  if not pr_found:
-                      f.write("_No PRs created in this repo._\\n")
+                  detailed_report += f"## 📘 {repo.full_name}\n"
 
-                  # Issues
-                  f.write("\\n### 🐛 Issues\\n")
-                  issue_found = False
-                  for issue in repo.get_issues(state="all", since=since):
+                  prs = repo.get_pulls(state="all", sort="updated", direction="desc")
+                  issues = repo.get_issues(state="all", since=since)
+                  pulls = repo.get_pulls(state="all")
+                  reviews_collected = []
+
+                  pr_count = 0
+                  issue_count = 0
+                  review_count = 0
+
+                  detailed_report += "### 🔧 Pull Requests\n"
+                  for pr in prs:
+                      if pr.user.login == user and since <= pr.created_at <= until:
+                          detailed_report += f"- [#{pr.number}] {pr.title}\n"
+                          pr_count += 1
+                  if pr_count == 0:
+                      detailed_report += "_No PRs created in this repo._\n"
+
+                  detailed_report += "\n### 🐛 Issues\n"
+                  for issue in issues:
                       if issue.pull_request is None and issue.user.login == user:
-                          f.write(f"- [#{issue.number}] {issue.title}\\n")
-                          issue_found = True
-                  if not issue_found:
-                      f.write("_No issues created in this repo._\\n")
+                          detailed_report += f"- [#{issue.number}] {issue.title}\n"
+                          issue_count += 1
+                  if issue_count == 0:
+                      detailed_report += "_No issues created in this repo._\n"
 
-                  # Reviews
-                  f.write("\\n### 👀 PR Reviews\\n")
-                  review_found = False
-                  for pr in repo.get_pulls(state="all", sort="created", direction="desc"):
-                      if pr.created_at < since:
-                          break
+                  detailed_report += "\n### 👀 PR Reviews\n"
+                  for pr in pulls:
                       try:
                           for review in pr.get_reviews():
-                              if review.user.login == user and since <= review.submitted_at.replace(tzinfo=utc) <= until:
-                                  f.write(f"- [#{pr.number}] {pr.title} (reviewed)\\n")
-                                  review_found = True
-                                  break  # One review per PR
-                      except Exception as e:
-                          print(f"⚠️ Failed to fetch reviews for PR #{pr.number} in {repo.full_name}: {e}")
-                  if not review_found:
-                      f.write("_No reviews in this repo._\\n")
+                              if review.user.login == user and since <= review.submitted_at <= until:
+                                  if pr.html_url not in reviews_collected:
+                                      detailed_report += f"- [#{pr.number}] {pr.title} (reviewed)\n"
+                                      reviews_collected.append(pr.html_url)
+                                      review_count += 1
+                      except:
+                          pass
+                  if review_count == 0:
+                      detailed_report += "_No reviews in this repo._\n"
 
-                  f.write("\\n---\\n\\n")
+                  detailed_report += "\n---\n\n"
+
+                  summary_data.append({
+                      "repo": repo.full_name,
+                      "prs": pr_count,
+                      "issues": issue_count,
+                      "reviews": review_count
+                  })
+
+              # Build and write the summary table
+              f.write("## 📋 Summary Table\n\n")
+              f.write("| 📘 Repository | 🔧 PRs | 🐛 Issues | 👀 Reviews |\n")
+              f.write("|--------------|--------|-----------|-------------|\n")
+              for entry in summary_data:
+                  f.write(f"| `{entry['repo']}` | {entry['prs']} | {entry['issues']} | {entry['reviews']} |\n")
+
+              f.write("\n---\n\n")
+              f.write(detailed_report)
           EOF
 
       - name: 📤 Commit and push report
