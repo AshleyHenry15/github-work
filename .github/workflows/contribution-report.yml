@@ -78,6 +78,7 @@ jobs:
 
                   pr_count = 0
                   issue_count = 0
+                  closed_issue_count = 0
                   review_count = 0
 
                   # Pull Requests
@@ -104,6 +105,17 @@ jobs:
                   if not issue_found:
                       f.write("_No issues created in this repo._\\n")
 
+                  # Closed Issues
+                  f.write("\\n### ✅ Closed Issues\\n")
+                  closed_issue_found = False
+                  for issue in repo.get_issues(state="closed", since=since):
+                      if issue.pull_request is None and issue.user.login == user:
+                          f.write(f"- [#{issue.number}] {issue.title} (closed)\\n")
+                          closed_issue_count += 1
+                          closed_issue_found = True
+                  if not closed_issue_found:
+                      f.write("_No issues closed in this repo._\\n")
+
                   # Reviews
                   f.write("\\n### 👀 PR Reviews\\n")
                   review_found = False
@@ -126,6 +138,7 @@ jobs:
                       "repo": repo.full_name,
                       "prs": pr_count,
                       "issues": issue_count,
+                      "closed_issues": closed_issue_count,
                       "reviews": review_count,
                   })
 
@@ -133,10 +146,10 @@ jobs:
 
               # Write summary table
               f.seek(summary_start)
-              f.write("| Repository | PRs | Issues | Reviews |\\n")
-              f.write("|------------|-----|--------|---------|\\n")
+              f.write("| Repository | PRs | Issues | Closed Issues | Reviews |\\n")
+              f.write("|------------|-----|--------|---------------|---------|\\n")
               for entry in summary:
-                  f.write(f"| {entry['repo']} | {entry['prs']} | {entry['issues']} | {entry['reviews']} |\\n")
+                  f.write(f"| {entry['repo']} | {entry['prs']} | {entry['issues']} | {entry['closed_issues']} | {entry['reviews']} |\\n")
               f.write("\\n")
           EOF
 
