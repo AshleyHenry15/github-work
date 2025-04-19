@@ -18,7 +18,7 @@ jobs:
           python-version: 3.11
 
       - name: 📦 Install dependencies
-        run: pip install PyGithub
+        run: pip install PyGithub pytz
 
       - name: 📝 Generate contribution report
         env:
@@ -48,13 +48,19 @@ jobs:
           import os
           from datetime import datetime, timedelta
           from github import Github
+          import pytz
 
           token = os.environ["GITHUB_TOKEN"]
           repos = os.environ["REPOS"].strip().splitlines()
           g = Github(token)
 
-          since = datetime.utcnow() - timedelta(days=7)
-          until = datetime.utcnow()
+          # Set timezone (UTC)
+          utc = pytz.UTC
+
+          # Make both datetime objects timezone-aware
+          since = datetime.utcnow().replace(tzinfo=utc) - timedelta(days=7)
+          until = datetime.utcnow().replace(tzinfo=utc)
+
           timestamp = datetime.utcnow().strftime('%Y-%m-%d')
           output_path = f"reports/report-{timestamp}.md"
 
