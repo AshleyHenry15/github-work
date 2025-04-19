@@ -2,7 +2,7 @@ name: Generate GitHub Contribution Report
 
 on:
   schedule:
-    - cron: '0 15 * * 5' # Every Friday at 3 PM EST
+    - cron: '0 19 * * 5'  # Every Friday at 3pm EST
   workflow_dispatch:
 
 jobs:
@@ -10,93 +10,62 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
+      REPOS: |
+        posit-dev/product-doc-theme
+        posit-dev/product-doc-styleguide
+        posit-dev/positron-website
+        rstudio/shiny-server-pro
+        posit-hosted/vivid-docs
+        posit-hosted/lucid-cloudyr-docs
+        rstudio/quarto-tiers
+        rstudio/helm
+        posit-dev/rsconnect-python
+        rstudio/chronicle
+        rstudio/partnership-docs
+        rstudio/package-manager
+        posit-dev/connect
+        rstudio/rstudio
+        rstudio/rstudio-pro
+        rstudio/docs.rstudio.com
+        rstudio/launcher
+        rstudio/solutions.posit.co
+        posit-hosted/shinyappsio-docs
+
     steps:
-      - name: Checkout
+      - name: 📥 Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up environment
+      - name: 🧰 Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install dependencies
+        run: pip install PyGithub
+
+      - name: 📅 Set date range
+        id: dates
         run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          mkdir -p reports
-          START_DATE=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
-          END_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          REPORT_FILE="reports/contribution-report.md"
+          SINCE=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
+          UNTIL=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "since=$SINCE" >> "$GITHUB_OUTPUT"
+          echo "until=$UNTIL" >> "$GITHUB_OUTPUT"
 
-          echo "# Weekly Contribution Report" > "$REPORT_FILE"
-          echo "_Generated on $(date)_  " >> "$REPORT_FILE"
-          echo "" >> "$REPORT_FILE"
+      - name: 📝 Generate contribution report
+        run: |
+          TIMESTAMP=$(date +'%Y-%m-%d')
+          python scripts/generate_report.py \
+            --token "${GITHUB_TOKEN}" \
+            --repos "${{ env.REPOS }}" \
+            --since "${{ steps.dates.outputs.since }}" \
+            --until "${{ steps.dates.outputs.until }}" \
+            --output "reports/report-$TIMESTAMP.md"
 
-          REPOS=(
-            "posit-dev/product-doc-theme"
-            "posit-dev/product-doc-styleguide"
-            "posit-dev/positron-website"
-            "rstudio/shiny-server-pro"
-            "posit-hosted/vivid-docs"
-            "posit-hosted/lucid-cloudyr-docs"
-            "rstudio/quarto-tiers"
-            "rstudio/helm"
-            "posit-dev/rsconnect-python"
-            "rstudio/chronicle"
-            "rstudio/partnership-docs"
-            "rstudio/package-manager"
-            "posit-dev/connect"
-            "rstudio/rstudio"
-            "rstudio/rstudio-pro"
-            "rstudio/docs.rstudio.com"
-            "rstudio/launcher"
-            "rstudio/solutions.posit.co"
-            "posit-hosted/shinyappsio-docs"
-          )
-
-          for REPO in "${REPOS[@]}"; do
-            echo "📁 Analyzing repo: $REPO"
-
-            # Pull Requests
-            PRs=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO/pulls?state=all&per_page=100" | \
-              jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
-              '.[] | select(.user.login == $user and .created_at >= $start and .created_at <= $end) | "- \(.title) ([#\(.number)](\(.html_url)))"')
-
-            # Issues
-            ISSUES=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO/issues?state=all&per_page=100" | \
-              jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
-              '.[] | select(.pull_request == null and .user.login == $user and .created_at >= $start and .created_at <= $end) | "- \(.title) ([#\(.number)](\(.html_url)))"')
-
-            # Reviews
-            REVIEWS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO/pulls?state=all&per_page=100" | \
-              jq -r '.[] | .number' | while read pr; do
-                curl -s -H "Authorization: token $GITHUB_TOKEN" \
-                  "https://api.github.com/repos/$REPO/pulls/$pr/reviews" | \
-                  jq -r --arg user "AshleyHenry15" --arg start "$START_DATE" --arg end "$END_DATE" \
-                  '.[] | select(.user.login == $user and .submitted_at >= $start and .submitted_at <= $end) | "- PR #'"$pr"' review ([link](\(.html_url)))"'
-              done)
-
-            # Commits
-            COMMITS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO/commits?author=AshleyHenry15&since=$START_DATE&until=$END_DATE" | \
-              jq -r '.[] | "- \(.commit.message | split("\n")[0]) ([link](\(.html_url)))"')
-
-            if [[ -n "$PRs$ISSUES$REVIEWS$COMMITS" ]]; then
-              echo "## $REPO" >> "$REPORT_FILE"
-
-              [[ -n "$PRs" ]] && echo -e "🔃 **Pull Requests**\n$PRs\n" >> "$REPORT_FILE"
-              [[ -n "$ISSUES" ]] && echo -e "🐞 **Issues**\n$ISSUES\n" >> "$REPORT_FILE"
-              [[ -n "$REVIEWS" ]] && echo -e "👀 **Reviews**\n$REVIEWS\n" >> "$REPORT_FILE"
-              [[ -n "$COMMITS" ]] && echo -e "📝 **Commits**\n$COMMITS\n" >> "$REPORT_FILE"
-
-              echo "" >> "$REPORT_FILE"
-            fi
-          done
-
-      - name: Commit and push report
+      - name: 🌀 Commit and push report
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git pull origin main
-          TIMESTAMP=$(date +'%Y-%m-%d')
-          cp "$REPORT_FILE" "reports/report-$TIMESTAMP.md"
           git add reports/
-          git commit -m "📊 Weekly contribution report ($TIMESTAMP)"
+          TIMESTAMP=$(date +'%Y-%m-%d')
+          git commit -m "Weekly contribution report ($TIMESTAMP)"
           git push
