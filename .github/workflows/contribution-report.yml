@@ -61,15 +61,15 @@ jobs:
           timestamp = datetime.utcnow().strftime('%Y-%m-%d')
           output_path = f"reports/report-{timestamp}.md"
 
-          summary = []
+          summary = []  # List of dicts for the summary table
 
           os.makedirs("reports", exist_ok=True)
           with open(output_path, "w", encoding="utf-8") as f:
               f.write(f"# 📊 GitHub Contribution Report ({timestamp})\\n\\n")
 
-              # Placeholder for summary
+              # Placeholder for summary, we'll come back and insert this
               summary_start = f.tell()
-              f.write("_Generating summary..._\\n\\n")
+              f.write("_Generating summary..._\n\n")
 
               for repo_name in repos:
                   repo = g.get_repo(repo_name)
@@ -152,11 +152,11 @@ jobs:
 
               # Write summary table
               f.seek(summary_start)
-              f.truncate()
               f.write("| Repository | PRs | Issues | Closed Issues | Reviews |\\n")
               f.write("|------------|-----|--------|---------------|---------|\\n")
               for entry in summary:
                   f.write(f"| {entry['repo']} | {entry['prs']} | {entry['issues']} | {entry['closed_issues']} | {entry['reviews']} |\\n")
+              # Add totals row
               f.write(f"| **Total** | **{total_prs}** | **{total_issues}** | **{total_closed_issues}** | **{total_reviews}** |\\n")
               f.write("\\n")
           EOF
