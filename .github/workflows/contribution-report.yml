@@ -144,14 +144,28 @@ jobs:
 
                   f.write("\\n---\\n\\n")
 
-              # Write summary table
-              f.seek(summary_start)
-              f.write("| Repository | PRs | Issues | Closed Issues | Reviews |\\n")
-              f.write("|------------|-----|--------|---------------|---------|\\n")
-              for entry in summary:
-                  f.write(f"| {entry['repo']} | {entry['prs']} | {entry['issues']} | {entry['closed_issues']} | {entry['reviews']} |\\n")
-              f.write("\\n")
-          EOF
+                  # Write summary table
+                  f.seek(summary_start)
+                  f.write("| Repository | PRs | Issues | Closed Issues | Reviews |\\n")
+                  f.write("|------------|-----|--------|---------------|---------|\\n")
+                  
+                  # Initialize totals
+                  total_prs = 0
+                  total_issues = 0
+                  total_closed_issues = 0
+                  total_reviews = 0
+                  
+                  for entry in summary:
+                      f.write(f"| {entry['repo']} | {entry['prs']} | {entry['issues']} | {entry['closed_issues']} | {entry['reviews']} |\\n")
+                      total_prs += entry['prs']
+                      total_issues += entry['issues']
+                      total_closed_issues += entry['closed_issues']
+                      total_reviews += entry['reviews']
+                  
+                  # Add totals row
+                  f.write("| **Totals** | **{total_prs}** | **{total_issues}** | **{total_closed_issues}** | **{total_reviews}** |\\n")
+                  f.write("\\n")
+                  EOF
 
       - name: 📤 Commit and push report
         run: |
