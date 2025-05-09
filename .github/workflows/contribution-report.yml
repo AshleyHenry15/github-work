@@ -144,12 +144,20 @@ jobs:
 
                   f.write("\\n---\\n\\n")
 
+              # Calculate totals
+              total_prs = sum(entry['prs'] for entry in summary)
+              total_issues = sum(entry['issues'] for entry in summary)
+              total_closed_issues = sum(entry['closed_issues'] for entry in summary)
+              total_reviews = sum(entry['reviews'] for entry in summary)
+
               # Write summary table
               f.seek(summary_start)
               f.write("| Repository | PRs | Issues | Closed Issues | Reviews |\\n")
               f.write("|------------|-----|--------|---------------|---------|\\n")
               for entry in summary:
                   f.write(f"| {entry['repo']} | {entry['prs']} | {entry['issues']} | {entry['closed_issues']} | {entry['reviews']} |\\n")
+              # Add totals row
+              f.write(f"| **Total** | **{total_prs}** | **{total_issues}** | **{total_closed_issues}** | **{total_reviews}** |\\n")
               f.write("\\n")
           EOF
 
