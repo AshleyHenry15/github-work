@@ -42,6 +42,7 @@ jobs:
             rstudio/docs.rstudio.com
             rstudio/launcher
             rstudio/solutions.posit.co
+            rstudio-web
             posit-hosted/shinyappsio-docs
         run: |
           python <<EOF
