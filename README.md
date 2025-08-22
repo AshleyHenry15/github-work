@@ -4,6 +4,7 @@ Here are the weekly reports for my GitHub contributions:
 
 <!-- insert list after this marker-->
 <!-- insert list after this marker-->
+- [report-2025-08-22.md](reports/report-2025-08-22.md)
 - [report-2025-08-15.md](reports/report-2025-08-15.md)
 - [report-2025-08-08.md](reports/report-2025-08-08.md)
 - [report-2025-08-01.md](reports/report-2025-08-01.md)
