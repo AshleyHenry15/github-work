@@ -25,6 +25,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
           REPOS: |
             posit-dev/product-doc-theme
+            posit-dev/troubleshooting
             posit-dev/product-doc-styleguide
             posit-dev/positron-website
             rstudio/shiny-server-pro
