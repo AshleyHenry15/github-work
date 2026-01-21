@@ -23,28 +23,7 @@ jobs:
       - name: 📝 Generate contribution report
         env:
           GITHUB_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
-          REPOS: |
-            posit-dev/product-doc-theme
-            posit-dev/troubleshooting
-            posit-dev/product-doc-styleguide
-            posit-dev/positron-website
-            rstudio/shiny-server-pro
-            posit-hosted/vivid-docs
-            posit-hosted/lucid-cloudyr-docs
-            rstudio/quarto-tiers
-            rstudio/helm
-            posit-dev/rsconnect-python
-            rstudio/chronicle
-            rstudio/partnership-docs
-            rstudio/package-manager
-            posit-dev/connect
-            rstudio/rstudio
-            rstudio/rstudio-pro
-            rstudio/docs.rstudio.com
-            rstudio/launcher
-            rstudio/solutions.posit.co
-            rstudio/rstudio-web
-            posit-hosted/shinyappsio-docs
+          REPOS: ${{ secrets.REPO_LIST }}
         run: |
           python <<EOF
           import os
