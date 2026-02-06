@@ -113,39 +113,35 @@ jobs:
                   # Only write section if there's any activity
                   has_activity = pr_count > 0 or issue_count > 0 or closed_issue_count > 0 or review_count > 0
                   if has_activity:
-                      f.write(f"## 📘 {product_name}\\n")
+                      f.write(f"## 📘 {product_name}\\n\\n")
 
-                      # Pull Requests
-                      f.write("### 🔧 Pull Requests\\n")
+                      # Pull Requests - only show if there are any
                       if pr_list:
+                          f.write("### 🔧 Pull Requests\\n")
                           for pr_num, pr_title in pr_list:
                               f.write(f"- [#{pr_num}] {pr_title}\\n")
-                      else:
-                          f.write("_No PRs created in this repo._\\n")
+                          f.write("\\n")
 
-                      # Issues
-                      f.write("\\n### 🐛 Issues\\n")
+                      # Issues - only show if there are any
                       if issue_list:
+                          f.write("### 🐛 Issues\\n")
                           for issue_num, issue_title in issue_list:
                               f.write(f"- [#{issue_num}] {issue_title}\\n")
-                      else:
-                          f.write("_No issues created in this repo._\\n")
+                          f.write("\\n")
 
-                      # Closed Issues
-                      f.write("\\n### ✅ Closed Issues\\n")
+                      # Closed Issues - only show if there are any
                       if closed_issue_list:
+                          f.write("### ✅ Closed Issues\\n")
                           for issue_num, issue_title in closed_issue_list:
                               f.write(f"- [#{issue_num}] {issue_title} (closed)\\n")
-                      else:
-                          f.write("_No issues closed in this repo._\\n")
+                          f.write("\\n")
 
-                      # Reviews
-                      f.write("\\n### 👀 PR Reviews\\n")
+                      # Reviews - only show if there are any
                       if review_list:
+                          f.write("### 👀 PR Reviews\\n")
                           for pr_num, pr_title in review_list:
                               f.write(f"- [#{pr_num}] {pr_title} (reviewed)\\n")
-                      else:
-                          f.write("_No reviews in this repo._\\n")
+                          f.write("\\n")
 
                       summary.append({
                           "repo": product_name,
@@ -155,7 +151,7 @@ jobs:
                           "reviews": review_count,
                       })
 
-                      f.write("\\n---\\n\\n")
+                      f.write("---\\n\\n")
 
               # Calculate totals
               total_prs = sum(entry['prs'] for entry in summary)
