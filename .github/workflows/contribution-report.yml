@@ -54,120 +54,122 @@ jobs:
           output_path = f"reports/report-{timestamp}.md"
 
           summary = []  # List of dicts for the summary table
+          sections_content = []  # Store all section content
 
           os.makedirs("reports", exist_ok=True)
+
+          for repo_name in repos:
+              repo = g.get_repo(repo_name)
+              product_name = repo_map[repo_name]
+              print(f"🔍 Checking {product_name}...")
+
+              pr_count = 0
+              issue_count = 0
+              closed_issue_count = 0
+              review_count = 0
+
+              # Collect PRs
+              pr_list = []
+              for pr in repo.get_pulls(state="all", sort="created", direction="desc"):
+                  if pr.created_at < since:
+                      break
+                  if pr.user.login == user:
+                      pr_list.append((pr.number, pr.title))
+                      pr_count += 1
+
+              # Collect Issues
+              issue_list = []
+              for issue in repo.get_issues(state="all", since=since):
+                  if issue.pull_request is None and issue.user.login == user:
+                      issue_list.append((issue.number, issue.title))
+                      issue_count += 1
+
+              # Collect Closed Issues
+              closed_issue_list = []
+              for issue in repo.get_issues(state="closed", since=since):
+                  if issue.pull_request is None and issue.user.login == user:
+                      closed_issue_list.append((issue.number, issue.title))
+                      closed_issue_count += 1
+
+              # Collect Reviews
+              review_list = []
+              for pr in repo.get_pulls(state="all", sort="created", direction="desc"):
+                  if pr.created_at < since:
+                      break
+                  try:
+                      for review in pr.get_reviews():
+                          if review.user.login == user and since <= review.submitted_at.replace(tzinfo=utc) <= until:
+                              review_list.append((pr.number, pr.title))
+                              review_count += 1
+                              break  # One review per PR
+                  except Exception as e:
+                      print(f"⚠️ Failed to fetch reviews for PR #{pr.number} in {product_name}: {e}")
+
+              # Only create section if there's any activity
+              has_activity = pr_count > 0 or issue_count > 0 or closed_issue_count > 0 or review_count > 0
+              if has_activity:
+                  section = f"## 📘 {product_name}\\n\\n"
+
+                  # Pull Requests - only show if there are any
+                  if pr_list:
+                      section += "### 🔧 Pull Requests\\n"
+                      for pr_num, pr_title in pr_list:
+                          section += f"- [#{pr_num}] {pr_title}\\n"
+                      section += "\\n"
+
+                  # Issues - only show if there are any
+                  if issue_list:
+                      section += "### 🐛 Issues\\n"
+                      for issue_num, issue_title in issue_list:
+                          section += f"- [#{issue_num}] {issue_title}\\n"
+                      section += "\\n"
+
+                  # Closed Issues - only show if there are any
+                  if closed_issue_list:
+                      section += "### ✅ Closed Issues\\n"
+                      for issue_num, issue_title in closed_issue_list:
+                          section += f"- [#{issue_num}] {issue_title} (closed)\\n"
+                      section += "\\n"
+
+                  # Reviews - only show if there are any
+                  if review_list:
+                      section += "### 👀 PR Reviews\\n"
+                      for pr_num, pr_title in review_list:
+                          section += f"- [#{pr_num}] {pr_title} (reviewed)\\n"
+                      section += "\\n"
+
+                  section += "---\\n\\n"
+                  sections_content.append(section)
+
+                  summary.append({
+                      "repo": product_name,
+                      "prs": pr_count,
+                      "issues": issue_count,
+                      "closed_issues": closed_issue_count,
+                      "reviews": review_count,
+                  })
+
+          # Now write everything in order
           with open(output_path, "w", encoding="utf-8") as f:
+              # Write header
               f.write(f"# 📊 GitHub Contribution Report ({timestamp})\\n\\n")
 
-              # Placeholder for summary, we'll come back and insert this
-              summary_start = f.tell()
-              f.write("_Generating summary..._\n\n")
-
-              for repo_name in repos:
-                  repo = g.get_repo(repo_name)
-                  product_name = repo_map[repo_name]
-                  print(f"🔍 Checking {product_name}...")
-
-                  pr_count = 0
-                  issue_count = 0
-                  closed_issue_count = 0
-                  review_count = 0
-
-                  # Collect PRs
-                  pr_list = []
-                  for pr in repo.get_pulls(state="all", sort="created", direction="desc"):
-                      if pr.created_at < since:
-                          break
-                      if pr.user.login == user:
-                          pr_list.append((pr.number, pr.title))
-                          pr_count += 1
-
-                  # Collect Issues
-                  issue_list = []
-                  for issue in repo.get_issues(state="all", since=since):
-                      if issue.pull_request is None and issue.user.login == user:
-                          issue_list.append((issue.number, issue.title))
-                          issue_count += 1
-
-                  # Collect Closed Issues
-                  closed_issue_list = []
-                  for issue in repo.get_issues(state="closed", since=since):
-                      if issue.pull_request is None and issue.user.login == user:
-                          closed_issue_list.append((issue.number, issue.title))
-                          closed_issue_count += 1
-
-                  # Collect Reviews
-                  review_list = []
-                  for pr in repo.get_pulls(state="all", sort="created", direction="desc"):
-                      if pr.created_at < since:
-                          break
-                      try:
-                          for review in pr.get_reviews():
-                              if review.user.login == user and since <= review.submitted_at.replace(tzinfo=utc) <= until:
-                                  review_list.append((pr.number, pr.title))
-                                  review_count += 1
-                                  break  # One review per PR
-                      except Exception as e:
-                          print(f"⚠️ Failed to fetch reviews for PR #{pr.number} in {product_name}: {e}")
-
-                  # Only write section if there's any activity
-                  has_activity = pr_count > 0 or issue_count > 0 or closed_issue_count > 0 or review_count > 0
-                  if has_activity:
-                      f.write(f"## 📘 {product_name}\\n\\n")
-
-                      # Pull Requests - only show if there are any
-                      if pr_list:
-                          f.write("### 🔧 Pull Requests\\n")
-                          for pr_num, pr_title in pr_list:
-                              f.write(f"- [#{pr_num}] {pr_title}\\n")
-                          f.write("\\n")
-
-                      # Issues - only show if there are any
-                      if issue_list:
-                          f.write("### 🐛 Issues\\n")
-                          for issue_num, issue_title in issue_list:
-                              f.write(f"- [#{issue_num}] {issue_title}\\n")
-                          f.write("\\n")
-
-                      # Closed Issues - only show if there are any
-                      if closed_issue_list:
-                          f.write("### ✅ Closed Issues\\n")
-                          for issue_num, issue_title in closed_issue_list:
-                              f.write(f"- [#{issue_num}] {issue_title} (closed)\\n")
-                          f.write("\\n")
-
-                      # Reviews - only show if there are any
-                      if review_list:
-                          f.write("### 👀 PR Reviews\\n")
-                          for pr_num, pr_title in review_list:
-                              f.write(f"- [#{pr_num}] {pr_title} (reviewed)\\n")
-                          f.write("\\n")
-
-                      summary.append({
-                          "repo": product_name,
-                          "prs": pr_count,
-                          "issues": issue_count,
-                          "closed_issues": closed_issue_count,
-                          "reviews": review_count,
-                      })
-
-                      f.write("---\\n\\n")
-
-              # Calculate totals
-              total_prs = sum(entry['prs'] for entry in summary)
-              total_issues = sum(entry['issues'] for entry in summary)
-              total_closed_issues = sum(entry['closed_issues'] for entry in summary)
-              total_reviews = sum(entry['reviews'] for entry in summary)
-
               # Write summary table
-              f.seek(summary_start)
               f.write("| Repository | PRs | Issues | Closed Issues | Reviews |\\n")
               f.write("|------------|-----|--------|---------------|---------|\\n")
               for entry in summary:
                   f.write(f"| {entry['repo']} | {entry['prs']} | {entry['issues']} | {entry['closed_issues']} | {entry['reviews']} |\\n")
+
               # Add totals row
-              f.write(f"| **Total** | **{total_prs}** | **{total_issues}** | **{total_closed_issues}** | **{total_reviews}** |\\n")
-              f.write("\\n")
+              total_prs = sum(entry['prs'] for entry in summary)
+              total_issues = sum(entry['issues'] for entry in summary)
+              total_closed_issues = sum(entry['closed_issues'] for entry in summary)
+              total_reviews = sum(entry['reviews'] for entry in summary)
+              f.write(f"| **Total** | **{total_prs}** | **{total_issues}** | **{total_closed_issues}** | **{total_reviews}** |\\n\\n")
+
+              # Write all sections
+              for section in sections_content:
+                  f.write(section)
           EOF
 
       - name: 📤 Commit and push report
