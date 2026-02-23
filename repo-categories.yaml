@@ -33,6 +33,8 @@ categories:
     repos:
       - "posit-dev/data-sources"
       - "rstudio/partnership-docs"
+      - "sarahsdao/sfquickstarts"
+      - "snowflake/sfquickstarts"
 
   other:
     name: "Other"
