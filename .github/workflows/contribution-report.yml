@@ -18,35 +18,36 @@ jobs:
           python-version: 3.11
 
       - name: 📦 Install dependencies
-        run: pip install PyGithub pytz
+        run: pip install PyGithub pytz pyyaml
 
       - name: 📝 Generate contribution report
         env:
           GITHUB_TOKEN: ${{ secrets.WEEKLY_TOKEN }}
-          REPOS: ${{ secrets.REPO_LIST }}
         run: |
           python <<EOF
           import os
           from datetime import datetime, timedelta
           from github import Github
           import pytz
+          import yaml
 
           token = os.environ["GITHUB_TOKEN"]
-          repos_raw = os.environ["REPOS"].strip().splitlines()
           g = Github(token)
 
-          # Parse repo|product_name format
+          # Load repo categories from YAML file
+          with open("repo-categories.yaml", "r") as f:
+              config = yaml.safe_load(f)
+
+          # Build repo_map from YAML config
           repo_map = {}
-          for line in repos_raw:
-              if "|" in line:
-                  repo_name, product_name = line.split("|", 1)
-                  repo_map[repo_name.strip()] = product_name.strip()
-              else:
-                  repo_map[line.strip()] = line.strip()
+          for category_key, category_data in config["categories"].items():
+              product_name = category_data["name"]
+              for repo_name in category_data["repos"]:
+                  repo_map[repo_name] = product_name
 
           repos = list(repo_map.keys())
 
-          user = "AshleyHenry15"
+          user = "sarahsdao"
           utc = pytz.UTC
           since = datetime.utcnow().replace(tzinfo=utc) - timedelta(days=7)
           until = datetime.utcnow().replace(tzinfo=utc)

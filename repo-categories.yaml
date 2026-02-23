@@ -1,0 +1,46 @@
+# Repository to Product Area Mapping
+# Used for automatic categorization of GitHub contributions
+
+categories:
+  wb-ide:
+    name: "WB/IDE"
+    description: "Workbench and IDE-related work"
+    repos:
+      - "rstudio/rstudio-pro"
+      - "rstudio/rstudio"
+
+  connect:
+    name: "Connect"
+    description: "Connect product work"
+    repos:
+      - "posit-dev/connect"
+
+  ppm:
+    name: "PPM"
+    description: "Package Manager work"
+    repos:
+      - "rstudio/package-manager"
+
+  chronicle:
+    name: "Chronicle"
+    description: "Chronicle product work"
+    repos:
+      - "rstudio/chronicle"
+
+  platform:
+    name: "Platform"
+    description: "Includes Snowflake/Partnerships work and Data sources"
+    repos:
+      - "posit-dev/data-sources"
+      - "rstudio/partnership-docs"
+
+  other:
+    name: "Other"
+    description: "Includes Style Guide, Troubleshooting, docs.posit.co, meetings, training, and administrative tasks"
+    repos:
+      - "rstudio/docs.rstudio.com"
+      - "posit-dev/troubleshooting"
+      - "posit-dev/doc-reviewer"
+
+# Default category for repos not listed above
+default_category: "other"
